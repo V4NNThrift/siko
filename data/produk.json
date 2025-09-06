@@ -1,0 +1,23 @@
+{
+  "kategori_kendaraan": [
+    { "label": "INFERNUS", "value": "411", "harga": 12000 },
+    { "label": "CHEETAH", "value": "415", "harga": 10000 },
+    { "label": "BULLET", "value": "541", "harga": 8000 },
+    { "label": "SUPER GT", "value": "506", "harga": 10000 },
+    { "label": "TURISMO", "value": "451", "harga": 10000 },
+    { "label": "ZR-350", "value": "477", "harga": 8000 },
+    { "label": "NRG-500", "value": "522", "harga": 8000 },
+    { "label": "KART", "value": "571", "harga": 5000 },
+    { "label": "BANDITO", "value": "568", "harga": 7000 },
+    { "label": "MESA", "value": "500", "harga": 8000 },
+    { "label": "MONSTER A", "value": "556", "harga": 15000 },
+    { "label": "MONSTER B", "value": "557", "harga": 15000 },
+    { "label": "SANDKING", "value": "495", "harga": 10000 },
+    { "label": "FBI RANCHER", "value": "490", "harga": 10000 },
+    { "label": "BF INJECTION", "value": "424", "harga": 5000 },
+    { "label": "MAVERICK", "value": "487", "harga": 20000 }
+  ],
+  "kategori_skin": [
+    { "label": "Skin Punk (Rp100.000)", "value": "181", "harga": 100000 }
+  ]
+}
