@@ -1,9 +1,9 @@
 require('dotenv').config();
 const {
-  SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder, EmbedBuilder, AttachmentBuilder
+  SlashCommandBuilder, ActionRowBuilder, StringSelectMenuBuilder
 } = require('discord.js');
-const path = require('path');
-const { sequelize } = require('../../db');
+const { sequelize, PlayerUCP } = require('../../db');
+const { sendCharacterEmbed } = require('../../utils/character');
 
 // --- Permission Roles ---
 const STAFF_ROLE_IDS = process.env.CEKUCP_ROLE_IDS
@@ -36,6 +36,12 @@ module.exports = {
     try {
       await interaction.deferReply({ ephemeral: true });
 
+      // First, check if the user has a UCP account at all
+      const ucpAccount = await PlayerUCP.findOne({ where: { DiscordID: targetUser.id } });
+      if (!ucpAccount) {
+        return interaction.editReply(`❌ User <@${targetUser.id}> tidak memiliki akun UCP yang terhubung.`);
+      }
+
       const [characters] = await sequelize.query(`
         SELECT pc.*
         FROM playerucp pu
@@ -44,7 +50,7 @@ module.exports = {
       `, { replacements: [targetUser.id] });
 
       if (!characters.length) {
-        return interaction.editReply(`❌ User <@${targetUser.id}> belum memiliki karakter.`);
+        return interaction.editReply(`❌ User <@${targetUser.id}> memiliki akun UCP, namun belum memiliki karakter.`);
       }
 
       if (characters.length === 1) {
@@ -101,49 +107,3 @@ module.exports = {
     }
   }
 };
-
-// --- Utility Functions ---
-function convertSecondsToHMS(seconds) {
-  seconds = Number(seconds) || 0;
-  const h = Math.floor(seconds / 3600);
-  const m = Math.floor((seconds % 3600) / 60);
-  const s = seconds % 60;
-  return `${h} jam ${m} menit ${s} detik`;
-}
-
-async function sendCharacterEmbed(interaction, c, user, useFollowUp = false) {
-  const body = [
-    `Head ${c.Char_Head}%`, `Stomach ${c.Char_Stomach}%`, `LA ${c.Char_LeftArm}%`,
-    `RA ${c.Char_RightArm}%`, `LF ${c.Char_LeftFoot}%`, `RF ${c.Char_RightFoot}%`,
-  ].join(', ');
-
-  const skinId = c.Char_Skin || 181;
-  const filePath = path.resolve(__dirname, `../../skin/${skinId}.png`);
-  const attachment = new AttachmentBuilder(filePath, { name: 'karakter.jpg' });
-
-  const embed = new EmbedBuilder()
-    .setTitle(`🧍 Karakter: ${c.Char_Name}`)
-    .setColor('#FFD700')
-    .setAuthor({ name: `Pemilik: ${user.username}`, iconURL: user.displayAvatarURL() })
-    .setDescription([
-      '**💰 Uang**', `Cash: \`$${c.Char_Money}\``, `Bank: \`$${c.Char_BankMoney}\``, `Rekening: \`${c.Char_BankRek}\``, '',
-      '**❤️ Kesehatan**', `Health: \`${c.Char_Health}%\` | Armor: \`${c.Char_Armour}%\``, `Hunger: \`${c.Char_Hunger}%\` | Drink: \`${c.Char_Thirst}%\``,
-      `Mental: \`${c.Char_Stress}%\``, `Body: ${body}`, '',
-      '**📈 Progress**', `Level: \`${c.Char_Level}\` | Exp: \`${c.Char_LevelUp}\``, `Playtime: \`${convertSecondsToHMS(c.Char_OnlineTimer)}\``, '',
-      '**📇 Info Tambahan**', `Skin ID: \`${c.Char_Skin}\``
-    ].join('\n'))
-    .setImage('attachment://karakter.jpg');
-
-  const payload = { embeds: [embed], files: [attachment], ephemeral: true };
-
-  if (useFollowUp) {
-    await interaction.followUp(payload);
-  } else {
-    // If it's not a followup, it means it's the first and only reply.
-    if (interaction.deferred) {
-        await interaction.editReply(payload);
-    } else {
-        await interaction.reply(payload);
-    }
-  }
-}

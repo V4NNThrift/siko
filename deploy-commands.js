@@ -28,7 +28,11 @@ const commands = [
     .addStringOption(option =>
       option.setName('nama_karakter')
         .setDescription('Nama karakter In-Game (Gunakan _ untuk spasi).')
-        .setRequired(true))
+        .setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('report-panel')
+    .setDescription('Mengirim panel report ke channel ini.')
 ].map(cmd => cmd.toJSON())
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
