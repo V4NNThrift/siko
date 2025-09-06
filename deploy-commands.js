@@ -12,7 +12,15 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('ticket')
-    .setDescription('ticket menu')
+    .setDescription('ticket menu'),
+
+  new SlashCommandBuilder()
+    .setName('karakter')
+    .setDescription('Menampilkan karakter kamu atau user lain (jika diizinkan)')
+    .addUserOption(option =>
+      option.setName('user')
+        .setDescription('User yang ingin kamu lihat karakternya')
+        .setRequired(false))
 ].map(cmd => cmd.toJSON())
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
