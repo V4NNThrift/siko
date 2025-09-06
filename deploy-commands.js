@@ -15,12 +15,20 @@ const commands = [
     .setDescription('ticket menu'),
 
   new SlashCommandBuilder()
-    .setName('karakter')
-    .setDescription('Menampilkan karakter kamu atau user lain (jika diizinkan)')
+    .setName('checkplayer')
+    .setDescription('Mengecek informasi UCP dan karakter seorang pemain.')
     .addUserOption(option =>
       option.setName('user')
-        .setDescription('User yang ingin kamu lihat karakternya')
-        .setRequired(false))
+        .setDescription('Pemain yang ingin dicek.')
+        .setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('karakter')
+    .setDescription('Menampilkan informasi karakter berdasarkan nama.')
+    .addStringOption(option =>
+      option.setName('nama_karakter')
+        .setDescription('Nama karakter In-Game (Gunakan _ untuk spasi).')
+        .setRequired(true))
 ].map(cmd => cmd.toJSON())
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

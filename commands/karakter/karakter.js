@@ -1,120 +1,62 @@
 require('dotenv').config();
 const {
   SlashCommandBuilder,
-  ActionRowBuilder,
-  StringSelectMenuBuilder,
   EmbedBuilder,
   AttachmentBuilder
 } = require('discord.js');
 const path = require('path');
 const { sequelize } = require('../../db');
 
-const ALLOWED_ROLE_IDS = process.env.ALLOWED_ROLE_IDS
-  ? process.env.ALLOWED_ROLE_IDS.split(',').map(id => id.trim())
-  : [];
-
-const CHANNEL_SELF = process.env.CHANNEL_SELF;
-const CHANNEL_MENTION = process.env.CHANNEL_MENTION;
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('karakter')
-    .setDescription('Menampilkan karakter kamu atau user lain (jika diizinkan)')
-    .addUserOption(option =>
-      option.setName('user')
-        .setDescription('User yang ingin kamu lihat karakternya')
-        .setRequired(false)),
+    .setDescription('Menampilkan informasi karakter berdasarkan nama.')
+    .addStringOption(option =>
+      option.setName('nama_karakter')
+        .setDescription('Nama karakter In-Game (Gunakan _ untuk spasi).')
+        .setRequired(true)),
 
   async execute(interaction) {
-    const mentionedUser = interaction.options.getUser('user');
-    const targetUser = mentionedUser || interaction.user;
-    const isSelf = targetUser.id === interaction.user.id;
-
-    // ❌ Channel restriction
-    if (!isSelf && interaction.channel.id !== CHANNEL_MENTION) {
-      return interaction.reply({ content: `❌ Command ini hanya bisa dipakai di <#${CHANNEL_MENTION}>`, ephemeral: true });
-    }
-
-    if (isSelf && interaction.channel.id !== CHANNEL_SELF) {
-      return interaction.reply({ content: `❌ Command ini hanya bisa dipakai di <#${CHANNEL_SELF}>`, ephemeral: true });
-    }
-
-    // ❌ Role check untuk tag orang lain
-    if (!isSelf) {
-      const hasPermission = interaction.member.roles.cache.some(role =>
-        ALLOWED_ROLE_IDS.includes(role.id)
-      );
-
-      if (!hasPermission) {
-        return interaction.reply({ content: '❌ Kamu tidak punya izin untuk melihat karakter user lain.', ephemeral: true });
-      }
-    }
+    const characterName = interaction.options.getString('nama_karakter');
 
     try {
-      await interaction.deferReply(); // Defer reply to avoid timeout
+      await interaction.deferReply();
 
-      const [characters] = await sequelize.query(`
-        SELECT pc.*
-        FROM playerucp pu
-        JOIN player_characters pc ON pu.ucp = pc.Char_UCP
-        WHERE pu.DiscordID = ?
-      `, { replacements: [targetUser.id] });
+      const query = `
+        SELECT pc.*, pu.DiscordID
+        FROM player_characters pc
+        LEFT JOIN playerucp pu ON pc.Char_UCP = pu.ucp
+        WHERE pc.Char_Name = ?
+      `;
+      const [results] = await sequelize.query(query, { replacements: [characterName] });
 
-      if (!characters.length) {
-        return interaction.editReply(`❌ ${isSelf ? 'Kamu' : `User <@${targetUser.id}>`} belum memiliki karakter.`);
+      if (results.length === 0) {
+        return interaction.editReply(`❌ Karakter dengan nama **${characterName}** tidak ditemukan.`);
       }
 
-      if (characters.length === 1) {
-        return sendCharacterEmbed(interaction, characters[0], targetUser);
+      const characterData = results[0];
+      let targetUser = null;
+
+      if (characterData.DiscordID) {
+        try {
+          targetUser = await interaction.client.users.fetch(characterData.DiscordID);
+        } catch (err) {
+          console.log(`[KARAKTER_FETCH_USER_WARN] Could not fetch user ${characterData.DiscordID} for character ${characterName}. They might not be in the server.`);
+        }
       }
 
-      // Jika lebih dari 1 karakter
-      const select = new StringSelectMenuBuilder()
-        .setCustomId(`select-karakter-${targetUser.id}-${interaction.id}`)
-        .setPlaceholder('Pilih karakter yang ingin ditampilkan')
-        .addOptions(characters.map(char => ({
-          label: char.Char_Name,
-          value: char.Char_Name
-        })));
+      // If user is not in the server, create a mock user object for display
+      if (!targetUser) {
+        targetUser = {
+          username: 'Tidak Diketahui',
+          displayAvatarURL: () => interaction.client.user.displayAvatarURL() // Default avatar
+        };
+      }
 
-      const row = new ActionRowBuilder().addComponents(select);
-
-      const reply = await interaction.editReply({
-        content: `Silakan pilih karakter untuk ${isSelf ? 'kamu' : `<@${targetUser.id}>`}:`,
-        components: [row]
-      });
-
-      const collector = reply.createMessageComponentCollector({
-        filter: (i) =>
-          i.user.id === interaction.user.id &&
-          i.customId === `select-karakter-${targetUser.id}-${interaction.id}`,
-        time: 15000,
-        max: 1
-      });
-
-      collector.on('collect', async (i) => {
-        const selected = characters.find(c => c.Char_Name === i.values[0]);
-        if (!selected) {
-          return i.update({ content: '❌ Karakter tidak ditemukan.', components: [], ephemeral: true });
-        }
-
-        await i.update({
-          content: `✅ Karakter **${selected.Char_Name}** dipilih.`,
-          components: []
-        });
-
-        // Use interaction.channel.send to send a new message with the embed
-        await sendCharacterEmbed(interaction, selected, targetUser, true);
-      });
-
-      collector.on('end', (collected) => {
-        if (collected.size === 0) {
-          interaction.editReply({ content: '⌛ Waktu habis, silakan ketik ulang perintah.', components: [] });
-        }
-      });
+      await sendCharacterEmbed(interaction, characterData, targetUser);
 
     } catch (err) {
-      console.error('[KARAKTER ERROR]', err);
+      console.error('[KARAKTER_CMD_ERROR]', err);
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp({ content: '❌ Terjadi kesalahan saat mengambil data karakter.', ephemeral: true });
       } else {
@@ -126,20 +68,16 @@ module.exports = {
 
 function convertSecondsToHMS(seconds) {
   seconds = Number(seconds) || 0;
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  return `${hours} jam${minutes ? ` ${minutes} menit` : ''}${secs ? ` ${secs} detik` : ''}`;
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h} jam ${m} menit ${s} detik`;
 }
 
-async function sendCharacterEmbed(interaction, c, user, useFollowUp = false) {
+async function sendCharacterEmbed(interaction, c, user) {
   const body = [
-    `Head ${c.Char_Head}%`,
-    `Stomach ${c.Char_Stomach}%`,
-    `LA ${c.Char_LeftArm}%`,
-    `RA ${c.Char_RightArm}%`,
-    `LF ${c.Char_LeftFoot}%`,
-    `RF ${c.Char_RightFoot}%`,
+    `Head ${c.Char_Head}%`, `Stomach ${c.Char_Stomach}%`, `LA ${c.Char_LeftArm}%`,
+    `RA ${c.Char_RightArm}%`, `LF ${c.Char_LeftFoot}%`, `RF ${c.Char_RightFoot}%`,
   ].join(', ');
 
   const skinId = c.Char_Skin || 181;
@@ -151,31 +89,14 @@ async function sendCharacterEmbed(interaction, c, user, useFollowUp = false) {
     .setColor('#FFD700')
     .setAuthor({ name: `Pemilik: ${user.username}`, iconURL: user.displayAvatarURL() })
     .setDescription([
-      '**💰 Uang**',
-      `Cash: \`$${c.Char_Money}\``,
-      `Bank: \`$${c.Char_BankMoney}\``,
-      `Rekening: \`${c.Char_BankRek}\``,
-      '',
-      '**❤️ Kesehatan**',
-      `Health: \`${c.Char_Health}%\` | Armor: \`${c.Char_Armour}%\``,
-      `Hunger: \`${c.Char_Hunger}%\` | Drink: \`${c.Char_Thirst}%\``,
-      `Mental: \`${c.Char_Stress}%\``,
-      `Body: ${body}`,
-      '',
-      '**📈 Progress**',
-      `Level: \`${c.Char_Level}\` | Exp: \`${c.Char_LevelUp}\``,
-      `Playtime: \`${convertSecondsToHMS(c.Char_OnlineTimer)}\``,
-      '',
-      '**📇 Info Tambahan**',
-      `Skin ID: \`${c.Char_Skin}\``
+      '**💰 Uang**', `Cash: \`$${c.Char_Money}\``, `Bank: \`$${c.Char_BankMoney}\``, `Rekening: \`${c.Char_BankRek}\``, '',
+      '**❤️ Kesehatan**', `Health: \`${c.Char_Health}%\` | Armor: \`${c.Char_Armour}%\``, `Hunger: \`${c.Char_Hunger}%\` | Drink: \`${c.Char_Thirst}%\``,
+      `Mental: \`${c.Char_Stress}%\``, `Body: ${body}`, '',
+      '**📈 Progress**', `Level: \`${c.Char_Level}\` | Exp: \`${c.Char_LevelUp}\``, `Playtime: \`${convertSecondsToHMS(c.Char_OnlineTimer)}\``, '',
+      '**📇 Info Tambahan**', `Skin ID: \`${c.Char_Skin}\``
     ].join('\n'))
     .setImage('attachment://karakter.jpg');
 
-  const messagePayload = { embeds: [embed], files: [attachment] };
-
-  if (useFollowUp) {
-      await interaction.followUp(messagePayload);
-  } else {
-      await interaction.editReply(messagePayload);
-  }
+  // Since this is a direct command, we use editReply on the deferred interaction.
+  await interaction.editReply({ embeds: [embed], files: [attachment] });
 }
