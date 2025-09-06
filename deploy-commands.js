@@ -15,15 +15,15 @@ const commands = [
     .setDescription('ticket menu'),
 
   new SlashCommandBuilder()
-    .setName('checkplayer')
-    .setDescription('Mengecek informasi UCP dan karakter seorang pemain.')
+    .setName('cekucp')
+    .setDescription('Melihat daftar karakter dari UCP seorang pemain.')
     .addUserOption(option =>
       option.setName('user')
-        .setDescription('Pemain yang ingin dicek.')
+        .setDescription('Pemain yang UCP-nya ingin dicek.')
         .setRequired(true)),
 
   new SlashCommandBuilder()
-    .setName('karakter')
+    .setName('cekkarakter')
     .setDescription('Menampilkan informasi karakter berdasarkan nama.')
     .addStringOption(option =>
       option.setName('nama_karakter')

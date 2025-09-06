@@ -9,7 +9,7 @@ const { sequelize } = require('../../db');
 
 module.exports = {
   data: new SlashCommandBuilder()
-    .setName('karakter')
+    .setName('cekkarakter')
     .setDescription('Menampilkan informasi karakter berdasarkan nama.')
     .addStringOption(option =>
       option.setName('nama_karakter')
@@ -41,7 +41,7 @@ module.exports = {
         try {
           targetUser = await interaction.client.users.fetch(characterData.DiscordID);
         } catch (err) {
-          console.log(`[KARAKTER_FETCH_USER_WARN] Could not fetch user ${characterData.DiscordID} for character ${characterName}. They might not be in the server.`);
+          console.log(`[CEKKARAKTER_FETCH_USER_WARN] Could not fetch user ${characterData.DiscordID} for character ${characterName}. They might not be in the server.`);
         }
       }
 
@@ -56,7 +56,7 @@ module.exports = {
       await sendCharacterEmbed(interaction, characterData, targetUser);
 
     } catch (err) {
-      console.error('[KARAKTER_CMD_ERROR]', err);
+      console.error('[CEKKARAKTER_CMD_ERROR]', err);
       if (interaction.replied || interaction.deferred) {
         await interaction.followUp({ content: '❌ Terjadi kesalahan saat mengambil data karakter.', ephemeral: true });
       } else {
@@ -97,6 +97,5 @@ async function sendCharacterEmbed(interaction, c, user) {
     ].join('\n'))
     .setImage('attachment://karakter.jpg');
 
-  // Since this is a direct command, we use editReply on the deferred interaction.
   await interaction.editReply({ embeds: [embed], files: [attachment] });
 }
