@@ -32,7 +32,11 @@ const commands = [
 
   new SlashCommandBuilder()
     .setName('report-panel')
-    .setDescription('Mengirim panel report ke channel ini.')
+    .setDescription('Mengirim panel report ke channel ini.'),
+
+  new SlashCommandBuilder()
+    .setName('serverinfo')
+    .setDescription('Menampilkan informasi tentang server ini.')
 ].map(cmd => cmd.toJSON())
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

@@ -61,6 +61,11 @@ module.exports = {
       if (interaction.customId === 'refund_create_ticket') {
         await handleRefundTicketCreation(interaction);
       } else if (interaction.customId === 'refund_ticket_open_modal') {
+        const initialMessage = await interaction.channel.messages.fetch(interaction.message.id);
+        const creatorId = initialMessage.embeds[0].description.match(/<@(\d+)>/)[1];
+        if (interaction.user.id !== creatorId) {
+          return interaction.reply({ content: '❌ Hanya pembuat tiket yang dapat membuka form ini.', ephemeral: true });
+        }
         await interaction.showModal(createRefundModal());
       } else if (interaction.customId === 'refund_ticket_close_request') {
         const hasPermission = interaction.member.roles.cache.has(REFUND_TICKET_SUPPORT_ROLE_ID);
@@ -96,38 +101,42 @@ module.exports = {
 
     if (interaction.isModalSubmit()) {
       const user = interaction.user;
-      const footerText = `${user.tag} | ${user.id} | ${interaction.customId.replace('modal_', '')}`;
+      const footerText = `Dilaporkan oleh ${user.tag} | ${user.id}`;
       let logEmbed;
 
       try {
         if (interaction.customId === 'modal_report_player') {
-          logEmbed = processReportPlayer(interaction, footerText);
+          logEmbed = processReportPlayer(interaction);
           const logChannel = await interaction.client.channels.fetch(PLAYER_LOG_CHANNEL_ID).catch(() => null);
-          if (logChannel) await logChannel.send({ embeds: [logEmbed] });
+          if (logChannel) await logChannel.send({ content: `<@&${REFUND_TICKET_SUPPORT_ROLE_ID}>`, embeds: [logEmbed] });
 
         } else if (interaction.customId === 'modal_report_staff') {
-          logEmbed = processReportStaff(interaction, footerText);
+          logEmbed = processReportStaff(interaction);
           const logChannel = await interaction.client.channels.fetch(STAFF_LOG_CHANNEL_ID).catch(() => null);
-          if (logChannel) await logChannel.send({ embeds: [logEmbed] });
+          if (logChannel) await logChannel.send({ content: `<@&${REFUND_TICKET_SUPPORT_ROLE_ID}>`, embeds: [logEmbed] });
 
         } else if (interaction.customId === 'modal_refund') {
-          logEmbed = processRefund(interaction, footerText);
-          await interaction.channel.send({ embeds: [logEmbed] });
+          await interaction.deferReply({ ephemeral: true });
+          logEmbed = processRefund(interaction);
+          await interaction.channel.send({ embeds: [logEmbed.setFooter({ text: footerText })] });
 
-          // Disable the button after submission
           const originalMessage = interaction.message;
-          const originalActionRow = originalMessage.components[0];
-          const disabledButton = new ButtonBuilder()
-            .setCustomId('refund_form_submitted')
-            .setLabel('Form Telah Dikirim')
-            .setStyle(ButtonStyle.Secondary)
-            .setDisabled(true);
-
-          const disabledRow = new ActionRowBuilder().addComponents(disabledButton);
+          const disabledButton = new ButtonBuilder().setCustomId('refund_form_submitted').setLabel('Form Telah Dikirim').setStyle(ButtonStyle.Secondary).setDisabled(true);
+          const closeButton = new ButtonBuilder().setCustomId('refund_ticket_close_request').setLabel('Tutup Tiket').setStyle(ButtonStyle.Danger);
+          const disabledRow = new ActionRowBuilder().addComponents(disabledButton, closeButton);
           await originalMessage.edit({ components: [disabledRow] });
+
+          await interaction.editReply({ content: 'Laporan telah terkirim. Terima kasih!'});
+          return;
         }
       } catch (e) {
-        return interaction.reply({ content: `❌ Terjadi kesalahan: ${e.message}`, ephemeral: true }).catch(console.error);
+        const replyPayload = { content: `❌ Terjadi kesalahan: ${e.message}`, ephemeral: true };
+        if (interaction.deferred || interaction.replied) {
+            await interaction.editReply(replyPayload).catch(console.error);
+        } else {
+            await interaction.reply(replyPayload).catch(console.error);
+        }
+        return;
       }
 
       await interaction.reply({ content: 'Laporan telah terkirim. Terima kasih!', ephemeral: true }).catch(console.error);
@@ -139,7 +148,6 @@ module.exports = {
 async function handleRefundTicketCreation(interaction) {
   await interaction.deferReply({ ephemeral: true });
 
-  // --- Spam Prevention ---
   const existingTicket = interaction.guild.channels.cache.find(c =>
     c.name.startsWith('tiket-reffund-') &&
     c.permissionOverwrites.cache.has(interaction.user.id)
@@ -232,23 +240,27 @@ function createRefundModal() {
 }
 
 // --- Modal Processing Functions ---
-function processReportPlayer(interaction, footerText) {
+function processReportPlayer(interaction) {
   const pelaporName = interaction.fields.getTextInputValue('pelaporName');
   const terlaporName = interaction.fields.getTextInputValue('terlaporName');
   const tanggalKejadian = interaction.fields.getTextInputValue('tanggalKejadian');
   const kronologi = interaction.fields.getTextInputValue('kronologi');
   const bukti = extractUrl(kronologi);
 
-  return new EmbedBuilder().setColor('#E67E22').setTitle('👤 Report Player')
+  return new EmbedBuilder().setColor('#E67E22').setTitle('👤 Laporan Pemain Baru')
+    .setAuthor({ name: `Dari: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
     .addFields(
-      { name: 'Nama Pelapor (IC)', value: pelaporName }, { name: 'Nama Terlapor', value: terlaporName },
-      { name: 'Tanggal Kejadian', value: tanggalKejadian }, { name: 'Kronologi / Kerugian', value: kronologi },
+      { name: 'Nama Pelapor (IC)', value: pelaporName, inline: true },
+      { name: 'Nama Terlapor', value: terlaporName, inline: true },
+      { name: 'Tanggal Kejadian', value: tanggalKejadian, inline: true },
+      { name: 'Kronologi / Kerugian', value: `\`\`\`${kronologi}\`\`\`` },
     )
-    .addFields(bukti ? { name: 'Bukti', value: bukti } : [])
-    .setFooter({ text: footerText }).setTimestamp();
+    .addFields(bukti ? { name: 'Bukti Terlampir', value: bukti } : [])
+    .setTimestamp()
+    .setFooter({text: `ID Pelapor: ${interaction.user.id}`});
 }
 
-function processReportStaff(interaction, footerText) {
+function processReportStaff(interaction) {
   const pelaporName = interaction.fields.getTextInputValue('pelaporName');
   const staffName = interaction.fields.getTextInputValue('staffName');
   const tanggalKejadian = interaction.fields.getTextInputValue('tanggalKejadian');
@@ -256,17 +268,21 @@ function processReportStaff(interaction, footerText) {
   const kronologi = interaction.fields.getTextInputValue('kronologi');
   const bukti = extractUrl(kronologi);
 
-  return new EmbedBuilder().setColor('#95A5A6').setTitle('🛡️ Report Staff')
+  return new EmbedBuilder().setColor('#95A5A6').setTitle('🛡️ Laporan Staff Baru')
+    .setAuthor({ name: `Dari: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
     .addFields(
-        { name: 'Name Pelapor (IC)', value: pelaporName }, { name: 'Name Staff', value: staffName },
-        { name: 'Tanggal Kejadian', value: tanggalKejadian }, { name: 'Pelanggaran Terlapor', value: pelanggaran },
-        { name: 'Kronologi Pelapor', value: kronologi },
+        { name: 'Name Pelapor (IC)', value: pelaporName, inline: true },
+        { name: 'Name Staff', value: staffName, inline: true },
+        { name: 'Tanggal Kejadian', value: tanggalKejadian, inline: true },
+        { name: 'Pelanggaran Terlapor', value: `\`\`\`${pelanggaran}\`\`\`` },
+        { name: 'Kronologi Pelapor', value: `\`\`\`${kronologi}\`\`\`` },
     )
-    .addFields(bukti ? { name: 'Bukti', value: bukti } : [])
-    .setFooter({ text: footerText }).setTimestamp();
+    .addFields(bukti ? { name: 'Bukti Terlampir', value: bukti } : [])
+    .setTimestamp()
+    .setFooter({text: `ID Pelapor: ${interaction.user.id}`});
 }
 
-function processRefund(interaction, footerText) {
+function processRefund(interaction) {
   const icName = interaction.fields.getTextInputValue('icName');
   const tanggalKejadian = interaction.fields.getTextInputValue('tanggalKejadian');
   const itemsRefund = interaction.fields.getTextInputValue('itemsRefund');
@@ -274,14 +290,15 @@ function processRefund(interaction, footerText) {
   const bukti = extractUrl(kronologi);
 
   return new EmbedBuilder().setColor('#2ECC71').setTitle('💸 Permohonan Refund')
+    .setAuthor({ name: `Dari: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
     .addFields(
-        { name: 'Name (IC)', value: icName },
-        { name: 'Tanggal Kejadian', value: tanggalKejadian },
-        { name: 'Items Reffund', value: itemsRefund },
-        { name: 'Kronologi', value: kronologi },
+        { name: 'Name (IC)', value: icName, inline: true },
+        { name: 'Tanggal Kejadian', value: tanggalKejadian, inline: true },
+        { name: 'Items Reffund', value: `\`\`\`${itemsRefund}\`\`\`` },
+        { name: 'Kronologi', value: `\`\`\`${kronologi}\`\`\`` },
     )
-    .addFields(bukti ? { name: 'Bukti', value: bukti } : [])
-    .setFooter({ text: footerText }).setTimestamp();
+    .addFields(bukti ? { name: 'Bukti Terlampir', value: bukti } : [])
+    .setTimestamp();
 }
 
 // --- Utility ---
