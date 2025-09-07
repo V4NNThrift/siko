@@ -6,11 +6,13 @@ const { sequelize, ServerConfig } = require('../../db');
 const STAFF_ROLE_IDS = (process.env.CEKUCP_ROLE_IDS || '').split(',').map(id => id.trim());
 const TICKET_CATEGORY_ID = process.env.TICKET_CATEGORY_ID || '1414136407307456553';
 const SUPPORT_ROLE_ID = process.env.REFUND_TICKET_SUPPORT_ROLE_ID || '1365274991825915982';
+const DEV_ROLE_ID = process.env.BUG_REPORT_DEV_ROLE_ID || '1365274991859466260';
 
 const TICKET_TYPES = {
   player: { name: 'Report Player', prefix: 'report-player-', dbKey: 'playerReportCount', emoji: '👤', color: '#E67E22' },
   staff: { name: 'Report Staff', prefix: 'report-staff-', dbKey: 'staffReportCount', emoji: '🛡️', color: '#95A5A6' },
-  refund: { name: 'Refund', prefix: 'tiket-reffund-', dbKey: 'refundTicketCount', emoji: '💸', color: '#2ECC71' }
+  refund: { name: 'Refund', prefix: 'tiket-reffund-', dbKey: 'refundTicketCount', emoji: '💸', color: '#2ECC71' },
+  bug: { name: 'Report Bug', prefix: 'report-bug-', dbKey: 'bugReportCount', emoji: '🐞', color: '#E91E63' }
 };
 
 module.exports = {
@@ -31,7 +33,8 @@ module.exports = {
     const row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId('ticket_create_player').setLabel('Report Player').setStyle(ButtonStyle.Danger).setEmoji('👤'),
       new ButtonBuilder().setCustomId('ticket_create_staff').setLabel('Report Staff').setStyle(ButtonStyle.Secondary).setEmoji('🛡️'),
-      new ButtonBuilder().setCustomId('ticket_create_refund').setLabel('Refund').setStyle(ButtonStyle.Success).setEmoji('💸')
+      new ButtonBuilder().setCustomId('ticket_create_refund').setLabel('Refund').setStyle(ButtonStyle.Success).setEmoji('💸'),
+      new ButtonBuilder().setCustomId('ticket_create_bug').setLabel('Report Bug').setStyle(ButtonStyle.Primary).setEmoji('🐞')
     );
 
     await interaction.channel.send({ embeds: [embed], components: [row] });
@@ -91,6 +94,8 @@ async function handleTicketCreation(interaction, ticketType) {
         { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
         { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
         { id: SUPPORT_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+        // Add dev role permission for bug reports
+        ...(ticketType === 'bug' ? [{ id: DEV_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] }] : []),
       ],
     });
 
@@ -105,7 +110,12 @@ async function handleTicketCreation(interaction, ticketType) {
       new ButtonBuilder().setCustomId('ticket_close_request').setLabel('Tutup Tiket').setStyle(ButtonStyle.Danger)
     );
 
-    await channel.send({ content: `<@&${SUPPORT_ROLE_ID}>`, embeds: [embed], components: [row] });
+    let pingContent = `<@&${SUPPORT_ROLE_ID}>`;
+    if (ticketType === 'bug') {
+        pingContent += `, <@&${DEV_ROLE_ID}>`;
+    }
+
+    await channel.send({ content: pingContent, embeds: [embed], components: [row] });
     await interaction.editReply({ content: `✅ Tiket Anda telah dibuat: <#${channel.id}>` });
   } catch (error) {
     await t.rollback();
@@ -125,6 +135,7 @@ async function handleOpenModal(interaction, ticketType) {
     if (ticketType === 'player') modal = createReportPlayerModal();
     else if (ticketType === 'staff') modal = createReportStaffModal();
     else if (ticketType === 'refund') modal = createRefundModal();
+    else if (ticketType === 'bug') modal = createBugReportModal();
 
     if(modal) await interaction.showModal(modal);
 }
@@ -154,6 +165,8 @@ async function handleModalSubmit(interaction, ticketType) {
     if (ticketType === 'player') logEmbed = processReportPlayer(interaction);
     else if (ticketType === 'staff') logEmbed = processReportStaff(interaction);
     else if (ticketType === 'refund') logEmbed = processRefund(interaction);
+    else if (ticketType === 'bug') logEmbed = processBugReport(interaction);
+
     if (!logEmbed) return interaction.editReply({ content: '❌ Gagal memproses laporan, tipe tidak dikenal.' });
 
     await interaction.channel.send({ embeds: [logEmbed.setAuthor({ name: `Dari: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })] });
@@ -258,4 +271,36 @@ function extractUrl(text) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const urls = text.match(urlRegex);
     return urls ? urls.join('\n') : null;
+}
+
+function createBugReportModal() {
+  return new ModalBuilder().setCustomId('modal_bug').setTitle('Formulir Laporan Bug')
+    .addComponents(
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('bug_dialami').setLabel("Bug yang dialami").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("Contoh: Tidak bisa membuka inventory")),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('tanggal_kejadian').setLabel("Tanggal terjadi bugnya").setStyle(TextInputStyle.Short).setRequired(true).setPlaceholder("Contoh: 27 April 2025")),
+      new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('bukti_info').setLabel("Bukti/Info Tambahan").setStyle(TextInputStyle.Paragraph).setRequired(false).setPlaceholder("Sertakan link screenshot atau video jika ada."))
+    );
+}
+
+function processBugReport(interaction) {
+  const bugDialami = interaction.fields.getTextInputValue('bug_dialami');
+  const tanggalKejadian = interaction.fields.getTextInputValue('tanggal_kejadian');
+  const buktiInfo = interaction.fields.getTextInputValue('bukti_info');
+  const bukti = extractUrl(buktiInfo);
+
+  const embed = new EmbedBuilder().setColor('#E91E63').setTitle('🐞 Laporan Bug')
+    .addFields(
+        { name: 'Bug yang dialami', value: bugDialami },
+        { name: 'Tanggal terjadi bugnya', value: tanggalKejadian }
+    );
+
+  if (buktiInfo) {
+    embed.addFields({ name: 'Bukti/Info Tambahan', value: `\`\`\`${buktiInfo}\`\`\`` });
+  }
+  if (bukti) {
+    embed.addFields({ name: 'Link Bukti Terdeteksi', value: bukti });
+  }
+
+  embed.setTimestamp();
+  return embed;
 }
