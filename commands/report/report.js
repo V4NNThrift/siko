@@ -1,18 +1,17 @@
 require('dotenv').config();
-const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionsBitField, ComponentType } = require('discord.js');
+const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, ModalBuilder, TextInputBuilder, TextInputStyle, ChannelType, PermissionsBitField } = require('discord.js');
 const { sequelize, ServerConfig } = require('../../db');
 
-// --- Permission Roles ---
-const STAFF_ROLE_IDS = process.env.CEKUCP_ROLE_IDS
-  ? process.env.CEKUCP_ROLE_IDS.split(',').map(id => id.trim())
-  : [];
-
 // --- Config IDs ---
-const PLAYER_LOG_CHANNEL_ID = process.env.PLAYER_REPORT_LOG_CHANNEL_ID || '1414122219403083836';
-const STAFF_LOG_CHANNEL_ID = process.env.STAFF_REPORT_LOG_CHANNEL_ID || '1414122248247443557';
-const REFUND_TICKET_CATEGORY_ID = process.env.REFUND_TICKET_CATEGORY_ID || '1365274992576565288';
-const REFUND_TICKET_SUPPORT_ROLE_ID = process.env.REFUND_TICKET_SUPPORT_ROLE_ID || '1365274991825915982';
+const STAFF_ROLE_IDS = (process.env.CEKUCP_ROLE_IDS || '').split(',').map(id => id.trim());
+const TICKET_CATEGORY_ID = process.env.TICKET_CATEGORY_ID || '1414136407307456553';
+const SUPPORT_ROLE_ID = process.env.REFUND_TICKET_SUPPORT_ROLE_ID || '1365274991825915982';
 
+const TICKET_TYPES = {
+  player: { name: 'Report Player', prefix: 'report-player-', dbKey: 'playerReportCount', emoji: '👤', color: '#E67E22' },
+  staff: { name: 'Report Staff', prefix: 'report-staff-', dbKey: 'staffReportCount', emoji: '🛡️', color: '#95A5A6' },
+  refund: { name: 'Refund', prefix: 'tiket-reffund-', dbKey: 'refundTicketCount', emoji: '💸', color: '#2ECC71' }
+};
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -21,195 +20,155 @@ module.exports = {
 
   async execute(interaction) {
     const hasPermission = interaction.member.roles.cache.some(role => STAFF_ROLE_IDS.includes(role.id));
-    if (!hasPermission) {
-      return interaction.reply({ content: '❌ Kamu tidak punya izin untuk melakukan perintah ini.', ephemeral: true });
-    }
+    if (!hasPermission) return interaction.reply({ content: '❌ Kamu tidak punya izin untuk melakukan perintah ini.', ephemeral: true });
 
     const embed = new EmbedBuilder()
       .setColor('#ff0000')
       .setTitle('Laporan & Bantuan WINDCITY RP')
-      .setDescription(
-        'Selamat datang di pusat laporan dan bantuan. Silakan pilih salah satu tombol di bawah ini sesuai dengan kebutuhan Anda.\n\n' +
-        '**👤 Report Player**\n' +
-        'Gunakan tombol ini jika Anda ingin melaporkan pemain lain yang melanggar peraturan server.\n\n' +
-        '**🛡️ Report Staff**\n' +
-        'Gunakan tombol ini jika Anda memiliki keluhan atau laporan mengenai kinerja staff.\n\n' +
-        '**💸 Refund**\n' +
-        'Gunakan tombol ini jika Anda kehilangan item atau aset akibat bug atau masalah server lainnya dan ingin mengajukan permohonan refund.\n\n' +
-        '_Penyalahgunaan sistem ini akan dikenakan sanksi._'
-      )
+      .setDescription('Silakan gunakan tombol di bawah ini untuk memulai laporan atau permohonan refund Anda. Setiap tombol akan membuat channel tiket pribadi.')
       .setFooter({ text: 'WINDCITY RP | Report System' });
 
-    const row = new ActionRowBuilder()
-      .addComponents(
-        new ButtonBuilder().setCustomId('report_player').setLabel('Report Player').setStyle(ButtonStyle.Danger).setEmoji('👤'),
-        new ButtonBuilder().setCustomId('report_staff').setLabel('Report Staff').setStyle(ButtonStyle.Secondary).setEmoji('🛡️'),
-        new ButtonBuilder().setCustomId('refund_create_ticket').setLabel('Refund').setStyle(ButtonStyle.Success).setEmoji('💸')
-      );
+    const row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('ticket_create_player').setLabel('Report Player').setStyle(ButtonStyle.Danger).setEmoji('👤'),
+      new ButtonBuilder().setCustomId('ticket_create_staff').setLabel('Report Staff').setStyle(ButtonStyle.Secondary).setEmoji('🛡️'),
+      new ButtonBuilder().setCustomId('ticket_create_refund').setLabel('Refund').setStyle(ButtonStyle.Success).setEmoji('💸')
+    );
 
     await interaction.channel.send({ embeds: [embed], components: [row] });
     await interaction.reply({ content: '✅ Panel report berhasil dikirim.', ephemeral: true });
   },
 
   async handleInteraction(interaction) {
-    const reportSystemIds = /^(report|modal_report|refund)/;
-    if (!reportSystemIds.test(interaction.customId)) {
-      return;
-    }
+    const [action, type, ...rest] = interaction.customId.split('_');
 
-    if (interaction.isButton()) {
-      if (interaction.customId === 'refund_create_ticket') {
-        await handleRefundTicketCreation(interaction);
-      } else if (interaction.customId === 'refund_ticket_open_modal') {
-        const initialMessage = await interaction.channel.messages.fetch(interaction.message.id);
-        const creatorId = initialMessage.embeds[0].description.match(/<@(\d+)>/)[1];
-        if (interaction.user.id !== creatorId) {
-          return interaction.reply({ content: '❌ Hanya pembuat tiket yang dapat membuka form ini.', ephemeral: true });
-        }
-        await interaction.showModal(createRefundModal());
-      } else if (interaction.customId === 'refund_ticket_close_request') {
-        const hasPermission = interaction.member.roles.cache.has(REFUND_TICKET_SUPPORT_ROLE_ID);
-        if (!hasPermission) {
-          return interaction.reply({ content: '❌ Anda tidak memiliki izin untuk menutup tiket ini.', ephemeral: true });
-        }
-        const confirmationRow = new ActionRowBuilder().addComponents(
-          new ButtonBuilder().setCustomId('refund_ticket_close_confirm').setLabel('Konfirmasi Tutup').setStyle(ButtonStyle.Danger)
-        );
-        await interaction.reply({
-          content: 'Apakah Anda yakin ingin menutup tiket ini? Tindakan ini tidak dapat diurungkan.',
-          components: [confirmationRow],
-          ephemeral: true
-        });
-      } else if (interaction.customId === 'refund_ticket_close_confirm') {
-        const hasPermission = interaction.member.roles.cache.has(REFUND_TICKET_SUPPORT_ROLE_ID);
-        if (!hasPermission) {
-          return interaction.reply({ content: '❌ Anda tidak memiliki izin untuk menutup tiket ini.', ephemeral: true });
-        }
-        await interaction.reply({ content: '✅ Tiket akan ditutup dalam 5 detik...', ephemeral: true });
-        setTimeout(() => interaction.channel.delete('Ticket closed by staff.'), 5000);
+    if (action !== 'ticket' && action !== 'modal') return;
+
+    try {
+      if (interaction.isButton()) {
+        if (action === 'ticket' && type === 'create') await handleTicketCreation(interaction, rest[0]);
+        else if (action === 'ticket' && type === 'open' && rest[0] === 'modal') await handleOpenModal(interaction, rest[1]);
+        else if (action === 'ticket' && type === 'close' && rest[0] === 'request') await handleCloseRequest(interaction);
+        else if (action === 'ticket' && type === 'close' && rest[0] === 'confirm') await handleCloseConfirm(interaction);
+      } else if (interaction.isModalSubmit()) {
+        await handleModalSubmit(interaction, type);
+      }
+    } catch (error) {
+      console.error(`[Interaction Error] Custom ID: ${interaction.customId}\n`, error);
+      const replyPayload = { content: '❌ Terjadi kesalahan internal saat memproses permintaan Anda.', ephemeral: true };
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp(replyPayload).catch(console.error);
       } else {
-        let modal;
-        if (interaction.customId === 'report_player') {
-          modal = createReportPlayerModal();
-        } else if (interaction.customId === 'report_staff') {
-          modal = createReportStaffModal();
-        }
-        if (modal) await interaction.showModal(modal);
+        await interaction.reply(replyPayload).catch(console.error);
       }
-      return;
-    }
-
-    if (interaction.isModalSubmit()) {
-      const user = interaction.user;
-      const footerText = `Dilaporkan oleh ${user.tag} | ${user.id}`;
-      let logEmbed;
-
-      try {
-        if (interaction.customId === 'modal_report_player') {
-          logEmbed = processReportPlayer(interaction);
-          const logChannel = await interaction.client.channels.fetch(PLAYER_LOG_CHANNEL_ID).catch(() => null);
-          if (logChannel) await logChannel.send({ content: `<@&${REFUND_TICKET_SUPPORT_ROLE_ID}>`, embeds: [logEmbed] });
-
-        } else if (interaction.customId === 'modal_report_staff') {
-          logEmbed = processReportStaff(interaction);
-          const logChannel = await interaction.client.channels.fetch(STAFF_LOG_CHANNEL_ID).catch(() => null);
-          if (logChannel) await logChannel.send({ content: `<@&${REFUND_TICKET_SUPPORT_ROLE_ID}>`, embeds: [logEmbed] });
-
-        } else if (interaction.customId === 'modal_refund') {
-          await interaction.deferReply({ ephemeral: true });
-          logEmbed = processRefund(interaction);
-          await interaction.channel.send({ embeds: [logEmbed.setFooter({ text: footerText })] });
-
-          const originalMessage = interaction.message;
-          const disabledButton = new ButtonBuilder().setCustomId('refund_form_submitted').setLabel('Form Telah Dikirim').setStyle(ButtonStyle.Secondary).setDisabled(true);
-          const closeButton = new ButtonBuilder().setCustomId('refund_ticket_close_request').setLabel('Tutup Tiket').setStyle(ButtonStyle.Danger);
-          const disabledRow = new ActionRowBuilder().addComponents(disabledButton, closeButton);
-          await originalMessage.edit({ components: [disabledRow] });
-
-          await interaction.editReply({ content: 'Laporan telah terkirim. Terima kasih!'});
-          return;
-        }
-      } catch (e) {
-        const replyPayload = { content: `❌ Terjadi kesalahan: ${e.message}`, ephemeral: true };
-        if (interaction.deferred || interaction.replied) {
-            await interaction.editReply(replyPayload).catch(console.error);
-        } else {
-            await interaction.reply(replyPayload).catch(console.error);
-        }
-        return;
-      }
-
-      await interaction.reply({ content: 'Laporan telah terkirim. Terima kasih!', ephemeral: true }).catch(console.error);
     }
   },
 };
 
-// --- Ticket Creation ---
-async function handleRefundTicketCreation(interaction) {
+async function handleTicketCreation(interaction, ticketType) {
   await interaction.deferReply({ ephemeral: true });
+  const typeInfo = TICKET_TYPES[ticketType];
+  if (!typeInfo) return interaction.editReply({ content: '❌ Tipe tiket tidak valid.' });
 
   const existingTicket = interaction.guild.channels.cache.find(c =>
-    c.name.startsWith('tiket-reffund-') &&
-    c.permissionOverwrites.cache.has(interaction.user.id)
+    c.name.startsWith(typeInfo.prefix) && c.permissionOverwrites.cache.has(interaction.user.id)
   );
-
-  if (existingTicket) {
-    return interaction.editReply({
-      content: `❌ Anda sudah memiliki tiket refund yang aktif di channel <#${existingTicket.id}>. Harap selesaikan tiket tersebut terlebih dahulu.`
-    });
-  }
+  if (existingTicket) return interaction.editReply({ content: `❌ Anda sudah memiliki tiket ${typeInfo.name} yang aktif di <#${existingTicket.id}>.` });
 
   const t = await sequelize.transaction();
   try {
-    let ticketCountConfig = await ServerConfig.findOne({ where: { key: 'refundTicketCount' }, transaction: t });
-    if (!ticketCountConfig) {
-      ticketCountConfig = await ServerConfig.create({ key: 'refundTicketCount', value: '0' }, { transaction: t });
-    }
+    let countConfig = await ServerConfig.findOne({ where: { key: typeInfo.dbKey }, transaction: t });
+    if (!countConfig) countConfig = await ServerConfig.create({ key: typeInfo.dbKey, value: '0' }, { transaction: t });
 
-    const newCount = parseInt(ticketCountConfig.value, 10) + 1;
-    await ticketCountConfig.update({ value: newCount.toString() }, { transaction: t });
+    const newCount = parseInt(countConfig.value, 10) + 1;
+    await countConfig.update({ value: newCount.toString() }, { transaction: t });
     await t.commit();
 
     const channel = await interaction.guild.channels.create({
-      name: `tiket-reffund-${newCount}`,
+      name: `${typeInfo.prefix}${newCount}`,
       type: ChannelType.GuildText,
-      parent: REFUND_TICKET_CATEGORY_ID,
+      parent: TICKET_CATEGORY_ID,
       permissionOverwrites: [
         { id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
-        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] },
-        { id: REFUND_TICKET_SUPPORT_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel] },
+        { id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
+        { id: SUPPORT_ROLE_ID, allow: [PermissionsBitField.Flags.ViewChannel, PermissionsBitField.Flags.SendMessages] },
       ],
     });
 
     const embed = new EmbedBuilder()
-      .setColor('#2ECC71')
-      .setTitle(`💸 Tiket Refund #${newCount}`)
-      .setDescription(`Selamat datang, <@${interaction.user.id}>!\n\nStaf kami akan segera membantu Anda. Silakan klik tombol di bawah ini untuk mengisi formulir permohonan refund Anda.`)
+      .setColor(typeInfo.color)
+      .setTitle(`${typeInfo.emoji} Tiket ${typeInfo.name} #${newCount}`)
+      .setDescription(`Selamat datang, <@${interaction.user.id}>!\n\nStaf kami akan segera membantu Anda. Silakan klik tombol di bawah ini untuk mengisi formulir laporan Anda.`)
       .setFooter({ text: 'Mohon siapkan bukti yang jelas jika diperlukan.' });
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('refund_ticket_open_modal').setLabel('Buka Form Refund').setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId('refund_ticket_close_request').setLabel('Tutup Tiket').setStyle(ButtonStyle.Danger)
+      new ButtonBuilder().setCustomId(`ticket_open_modal_${ticketType}`).setLabel('Buka Form Laporan').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('ticket_close_request').setLabel('Tutup Tiket').setStyle(ButtonStyle.Danger)
     );
 
-    await channel.send({
-      content: `<@&${REFUND_TICKET_SUPPORT_ROLE_ID}>, ada permohonan refund baru.`,
-      embeds: [embed],
-      components: [row]
-    });
-
+    await channel.send({ content: `<@&${SUPPORT_ROLE_ID}>`, embeds: [embed], components: [row] });
     await interaction.editReply({ content: `✅ Tiket Anda telah dibuat: <#${channel.id}>` });
-
   } catch (error) {
     await t.rollback();
-    console.error('Error creating refund ticket:', error);
-    await interaction.editReply({ content: '❌ Terjadi kesalahan saat membuat tiket refund. Silakan coba lagi.' });
+    console.error('Error creating ticket:', error);
+    await interaction.editReply({ content: '❌ Terjadi kesalahan saat membuat tiket.' });
   }
 }
 
-// --- Modal Creation Functions ---
+async function handleOpenModal(interaction, ticketType) {
+    const initialMessage = await interaction.channel.messages.fetch(interaction.message.id);
+    const creatorId = initialMessage.embeds[0].description.match(/<@(\d+)>/)[1];
+    if (interaction.user.id !== creatorId) {
+        return interaction.reply({ content: '❌ Hanya pembuat tiket yang dapat membuka form ini.', ephemeral: true });
+    }
+
+    let modal;
+    if (ticketType === 'player') modal = createReportPlayerModal();
+    else if (ticketType === 'staff') modal = createReportStaffModal();
+    else if (ticketType === 'refund') modal = createRefundModal();
+
+    if(modal) await interaction.showModal(modal);
+}
+
+async function handleCloseRequest(interaction) {
+    const hasPermission = interaction.member.roles.cache.has(SUPPORT_ROLE_ID);
+    if (!hasPermission) return interaction.reply({ content: '❌ Anda tidak memiliki izin untuk menutup tiket ini.', ephemeral: true });
+
+    const row = new ActionRowBuilder().addComponents(
+        new ButtonBuilder().setCustomId('ticket_close_confirm').setLabel('Konfirmasi Tutup').setStyle(ButtonStyle.Danger)
+    );
+    await interaction.reply({ content: 'Apakah Anda yakin ingin menutup tiket ini? Tindakan ini tidak dapat diurungkan.', components: [row], ephemeral: true });
+}
+
+async function handleCloseConfirm(interaction) {
+    const hasPermission = interaction.member.roles.cache.has(SUPPORT_ROLE_ID);
+    if (!hasPermission) return interaction.reply({ content: '❌ Anda tidak memiliki izin untuk menutup tiket ini.', ephemeral: true });
+
+    await interaction.reply({ content: '✅ Tiket akan ditutup dalam 5 detik...', ephemeral: true });
+    setTimeout(() => interaction.channel.delete('Ticket closed by staff.'), 5000);
+}
+
+async function handleModalSubmit(interaction, ticketType) {
+    await interaction.deferReply({ ephemeral: true });
+
+    let logEmbed;
+    if (ticketType === 'player') logEmbed = processReportPlayer(interaction);
+    else if (ticketType === 'staff') logEmbed = processReportStaff(interaction);
+    else if (ticketType === 'refund') logEmbed = processRefund(interaction);
+    if (!logEmbed) return interaction.editReply({ content: '❌ Gagal memproses laporan, tipe tidak dikenal.' });
+
+    await interaction.channel.send({ embeds: [logEmbed.setAuthor({ name: `Dari: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })] });
+
+    const originalMessage = interaction.message;
+    const disabledButton = new ButtonBuilder().setCustomId('form_submitted').setLabel('Form Telah Dikirim').setStyle(ButtonStyle.Secondary).setDisabled(true);
+    const closeButton = new ButtonBuilder().setCustomId('ticket_close_request').setLabel('Tutup Tiket').setStyle(ButtonStyle.Danger);
+    const disabledRow = new ActionRowBuilder().addComponents(disabledButton, closeButton);
+    await originalMessage.edit({ components: [disabledRow] });
+
+    await interaction.editReply({ content: 'Laporan Anda telah dikirim di channel ini. Terima kasih!' });
+}
+
 function createReportPlayerModal() {
-  return new ModalBuilder().setCustomId('modal_report_player').setTitle('Report Player')
+  return new ModalBuilder().setCustomId('modal_player').setTitle('Report Player')
     .addComponents(
       new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pelaporName').setLabel("Nama Pelapor (IC)").setPlaceholder("Nama IC/Discord Anda").setStyle(TextInputStyle.Short).setRequired(true)),
       new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('terlaporName').setLabel("Nama Terlapor").setPlaceholder("Nama IC/Discord yang dilaporkan").setStyle(TextInputStyle.Short).setRequired(true)),
@@ -219,7 +178,7 @@ function createReportPlayerModal() {
 }
 
 function createReportStaffModal() {
-  return new ModalBuilder().setCustomId('modal_report_staff').setTitle('Report Staff')
+  return new ModalBuilder().setCustomId('modal_staff').setTitle('Report Staff')
     .addComponents(
       new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('pelaporName').setLabel("Name Pelapor (IC)").setPlaceholder("Pelapor Name IC").setStyle(TextInputStyle.Short).setRequired(true)),
       new ActionRowBuilder().addComponents(new TextInputBuilder().setCustomId('staffName').setLabel("Name Staff").setPlaceholder("Nama Staff Ingame (Harus Valid)").setStyle(TextInputStyle.Short).setRequired(true)),
@@ -239,7 +198,6 @@ function createRefundModal() {
     );
 }
 
-// --- Modal Processing Functions ---
 function processReportPlayer(interaction) {
   const pelaporName = interaction.fields.getTextInputValue('pelaporName');
   const terlaporName = interaction.fields.getTextInputValue('terlaporName');
@@ -247,8 +205,7 @@ function processReportPlayer(interaction) {
   const kronologi = interaction.fields.getTextInputValue('kronologi');
   const bukti = extractUrl(kronologi);
 
-  return new EmbedBuilder().setColor('#E67E22').setTitle('👤 Laporan Pemain Baru')
-    .setAuthor({ name: `Dari: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+  return new EmbedBuilder().setColor('#E67E22').setTitle('👤 Laporan Pemain')
     .addFields(
       { name: 'Nama Pelapor (IC)', value: pelaporName, inline: true },
       { name: 'Nama Terlapor', value: terlaporName, inline: true },
@@ -256,8 +213,7 @@ function processReportPlayer(interaction) {
       { name: 'Kronologi / Kerugian', value: `\`\`\`${kronologi}\`\`\`` },
     )
     .addFields(bukti ? { name: 'Bukti Terlampir', value: bukti } : [])
-    .setTimestamp()
-    .setFooter({text: `ID Pelapor: ${interaction.user.id}`});
+    .setTimestamp();
 }
 
 function processReportStaff(interaction) {
@@ -268,8 +224,7 @@ function processReportStaff(interaction) {
   const kronologi = interaction.fields.getTextInputValue('kronologi');
   const bukti = extractUrl(kronologi);
 
-  return new EmbedBuilder().setColor('#95A5A6').setTitle('🛡️ Laporan Staff Baru')
-    .setAuthor({ name: `Dari: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
+  return new EmbedBuilder().setColor('#95A5A6').setTitle('🛡️ Laporan Staff')
     .addFields(
         { name: 'Name Pelapor (IC)', value: pelaporName, inline: true },
         { name: 'Name Staff', value: staffName, inline: true },
@@ -278,8 +233,7 @@ function processReportStaff(interaction) {
         { name: 'Kronologi Pelapor', value: `\`\`\`${kronologi}\`\`\`` },
     )
     .addFields(bukti ? { name: 'Bukti Terlampir', value: bukti } : [])
-    .setTimestamp()
-    .setFooter({text: `ID Pelapor: ${interaction.user.id}`});
+    .setTimestamp();
 }
 
 function processRefund(interaction) {
@@ -290,7 +244,6 @@ function processRefund(interaction) {
   const bukti = extractUrl(kronologi);
 
   return new EmbedBuilder().setColor('#2ECC71').setTitle('💸 Permohonan Refund')
-    .setAuthor({ name: `Dari: ${interaction.user.tag}`, iconURL: interaction.user.displayAvatarURL() })
     .addFields(
         { name: 'Name (IC)', value: icName, inline: true },
         { name: 'Tanggal Kejadian', value: tanggalKejadian, inline: true },
@@ -301,7 +254,6 @@ function processRefund(interaction) {
     .setTimestamp();
 }
 
-// --- Utility ---
 function extractUrl(text) {
     const urlRegex = /(https?:\/\/[^\s]+)/g;
     const urls = text.match(urlRegex);

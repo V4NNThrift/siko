@@ -35,8 +35,22 @@ const commands = [
     .setDescription('Mengirim panel report ke channel ini.'),
 
   new SlashCommandBuilder()
+    .setName('ping')
+    .setDescription('Melihat latensi bot.'),
+
+  new SlashCommandBuilder()
+    .setName('userinfo')
+    .setDescription('Menampilkan informasi tentang seorang user.')
+    .addUserOption(option => option.setName('user').setDescription('User yang ingin dilihat informasinya.')),
+
+  new SlashCommandBuilder()
     .setName('serverinfo')
-    .setDescription('Menampilkan informasi tentang server ini.')
+    .setDescription('Menampilkan informasi tentang server ini.'),
+
+  new SlashCommandBuilder()
+    .setName('avatar')
+    .setDescription('Menampilkan avatar seorang user.')
+    .addUserOption(option => option.setName('user').setDescription('User yang avatarnya ingin dilihat.'))
 ].map(cmd => cmd.toJSON())
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
