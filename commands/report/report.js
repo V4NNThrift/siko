@@ -43,6 +43,12 @@ module.exports = {
   },
 
   async handleInteraction(interaction) {
+    // This handler should only process interactions from the report system.
+    const reportSystemIds = /^(report|modal_report|refund)/;
+    if (!reportSystemIds.test(interaction.customId)) {
+      return;
+    }
+
     // --- Button Handler: Show Modals ---
     if (interaction.isButton()) {
       let modal;

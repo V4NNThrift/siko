@@ -88,6 +88,12 @@ module.exports = {
   },
 
   async handleInteraction(interaction) {
+    // This handler should only process interactions from the UCP registration system.
+    const ucpSystemIds = /^(open_modal|form_nama|button-reffrole|button-checkucp|reset-password|reset-ucp-password)/;
+    if (!ucpSystemIds.test(interaction.customId)) {
+      return;
+    }
+
     // ==== MODAL SUBMIT ====
     if (
       interaction.type === InteractionType.ModalSubmit &&
