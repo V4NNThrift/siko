@@ -62,6 +62,26 @@ module.exports = {
         await handleRefundTicketCreation(interaction);
       } else if (interaction.customId === 'refund_ticket_open_modal') {
         await interaction.showModal(createRefundModal());
+      } else if (interaction.customId === 'refund_ticket_close_request') {
+        const hasPermission = interaction.member.roles.cache.has(REFUND_TICKET_SUPPORT_ROLE_ID);
+        if (!hasPermission) {
+          return interaction.reply({ content: '❌ Anda tidak memiliki izin untuk menutup tiket ini.', ephemeral: true });
+        }
+        const confirmationRow = new ActionRowBuilder().addComponents(
+          new ButtonBuilder().setCustomId('refund_ticket_close_confirm').setLabel('Konfirmasi Tutup').setStyle(ButtonStyle.Danger)
+        );
+        await interaction.reply({
+          content: 'Apakah Anda yakin ingin menutup tiket ini? Tindakan ini tidak dapat diurungkan.',
+          components: [confirmationRow],
+          ephemeral: true
+        });
+      } else if (interaction.customId === 'refund_ticket_close_confirm') {
+        const hasPermission = interaction.member.roles.cache.has(REFUND_TICKET_SUPPORT_ROLE_ID);
+        if (!hasPermission) {
+          return interaction.reply({ content: '❌ Anda tidak memiliki izin untuk menutup tiket ini.', ephemeral: true });
+        }
+        await interaction.reply({ content: '✅ Tiket akan ditutup dalam 5 detik...', ephemeral: true });
+        setTimeout(() => interaction.channel.delete('Ticket closed by staff.'), 5000);
       } else {
         let modal;
         if (interaction.customId === 'report_player') {
@@ -119,6 +139,18 @@ module.exports = {
 async function handleRefundTicketCreation(interaction) {
   await interaction.deferReply({ ephemeral: true });
 
+  // --- Spam Prevention ---
+  const existingTicket = interaction.guild.channels.cache.find(c =>
+    c.name.startsWith('tiket-reffund-') &&
+    c.permissionOverwrites.cache.has(interaction.user.id)
+  );
+
+  if (existingTicket) {
+    return interaction.editReply({
+      content: `❌ Anda sudah memiliki tiket refund yang aktif di channel <#${existingTicket.id}>. Harap selesaikan tiket tersebut terlebih dahulu.`
+    });
+  }
+
   const t = await sequelize.transaction();
   try {
     let ticketCountConfig = await ServerConfig.findOne({ where: { key: 'refundTicketCount' }, transaction: t });
@@ -148,7 +180,8 @@ async function handleRefundTicketCreation(interaction) {
       .setFooter({ text: 'Mohon siapkan bukti yang jelas jika diperlukan.' });
 
     const row = new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId('refund_ticket_open_modal').setLabel('Buka Form Refund').setStyle(ButtonStyle.Primary)
+      new ButtonBuilder().setCustomId('refund_ticket_open_modal').setLabel('Buka Form Refund').setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId('refund_ticket_close_request').setLabel('Tutup Tiket').setStyle(ButtonStyle.Danger)
     );
 
     await channel.send({
