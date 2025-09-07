@@ -40,6 +40,20 @@ const PlayerUCP = sequelize.define('playerucp', {
   tableName: 'playerucp'
 });
 
+const ServerConfig = sequelize.define('ServerConfig', {
+  key: {
+    type: DataTypes.STRING,
+    primaryKey: true,
+  },
+  value: {
+    type: DataTypes.STRING,
+    allowNull: false,
+  },
+}, {
+  timestamps: false,
+  tableName: 'server_config',
+});
+
 (async () => {
   try {
     await sequelize.authenticate();
@@ -50,4 +64,4 @@ const PlayerUCP = sequelize.define('playerucp', {
   }
 })();
 
-module.exports = { sequelize, PlayerUCP };
+module.exports = { sequelize, PlayerUCP, ServerConfig };
