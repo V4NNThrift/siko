@@ -50,7 +50,19 @@ const commands = [
   new SlashCommandBuilder()
     .setName('avatar')
     .setDescription('Menampilkan avatar seorang user.')
-    .addUserOption(option => option.setName('user').setDescription('User yang avatarnya ingin dilihat.'))
+    .addUserOption(option => option.setName('user').setDescription('User yang avatarnya ingin dilihat.')),
+
+  new SlashCommandBuilder()
+    .setName('backupnow')
+    .setDescription('Menjalankan proses backup database secara manual.'),
+
+  new SlashCommandBuilder()
+    .setName('setschedule')
+    .setDescription('Mengatur jadwal auto backup database (Owner only).')
+    .addStringOption(option =>
+      option.setName('cron_string')
+        .setDescription('Format cron string (e.g., "0 */3 * * *")')
+        .setRequired(true))
 ].map(cmd => cmd.toJSON())
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

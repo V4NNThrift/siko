@@ -86,11 +86,15 @@ client.on('messageCreate', async message => {
   handleOnIC(message);
 });
 
+const scheduler = require('./scheduler');
+
 // === Bot Ready ===
 client.once('ready', async () => {
   console.log(`[\x1b[36mONLINE\x1b[0m] Bot ready as ${client.user.tag}`);
   require('./deploy-commands'); // Register slash commands
   global.discordClient = client;
+
+  scheduler.start(client);
 
   try {
     await startWA(); // WhatsApp starter
