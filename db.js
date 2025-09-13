@@ -48,6 +48,7 @@ const PlayerBan = sequelize.define('PlayerBan', {
 });
 
 const WarningLog = sequelize.define('WarningLog', {
+  id: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
   pID: { type: DataTypes.INTEGER, defaultValue: -1 },
   WarnType: { type: DataTypes.INTEGER, defaultValue: 0 },
   WarnTime: { type: DataTypes.BIGINT, defaultValue: 0 },
@@ -56,7 +57,6 @@ const WarningLog = sequelize.define('WarningLog', {
 }, {
   timestamps: false,
   tableName: 'warninglogs',
-  // No primary key in user's schema, so we let Sequelize add 'id' by default
 });
 
 const ServerConfig = sequelize.define('ServerConfig', {
