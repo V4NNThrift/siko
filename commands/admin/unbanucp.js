@@ -5,13 +5,6 @@ const ADMIN_ROLE_ID = '1365274991846756419';
 const ALLOWED_CHANNEL_ID = '1365274992786542600';
 const LOG_CHANNEL_ID = '1414122219403083836';
 
-// Helper function to get the highest admin level for a user
-async function getHighestAdminLevel(ucp) {
-    const characters = await PlayerCharacter.findAll({ where: { Char_UCP: ucp } });
-    if (!characters.length) return 0;
-    return Math.max(...characters.map(c => c.Char_Admin));
-}
-
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('unbanucp')
@@ -36,11 +29,6 @@ module.exports = {
     const adminUCP = await PlayerUCP.findOne({ where: { DiscordID: adminDiscordUser.id } });
     if (!adminUCP) {
       return interaction.editReply({ content: '❌ Akun admin Anda tidak ditemukan di database.' });
-    }
-
-    const adminLevel = await getHighestAdminLevel(adminUCP.ucp);
-    if (adminLevel < 3) {
-      return interaction.editReply({ content: '❌ Level admin Anda tidak mencukupi (membutuhkan level 3+).' });
     }
 
     const bannedUcp = await PlayerBan.findOne({ where: { name: ucpName } });

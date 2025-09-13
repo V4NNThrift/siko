@@ -1,17 +1,9 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
 const { PlayerUCP, PlayerBan, WarningLog, PlayerCharacter } = require('../../db');
-const { Op } = require('sequelize');
 
 const ADMIN_ROLE_ID = '1365274991846756419';
 const ALLOWED_CHANNEL_ID = '1365274992786542600';
 const LOG_CHANNEL_ID = '1414122219403083836';
-
-// Helper function to get the highest admin level for a user
-async function getHighestAdminLevel(ucp) {
-    const characters = await PlayerCharacter.findAll({ where: { Char_UCP: ucp } });
-    if (!characters.length) return 0;
-    return Math.max(...characters.map(c => c.Char_Admin));
-}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -46,19 +38,7 @@ module.exports = {
       return interaction.editReply({ content: `❌ Akun UCP untuk ${targetUser.tag} tidak ditemukan.` });
     }
 
-    const adminLevel = await getHighestAdminLevel(adminUCP.ucp);
-    const targetLevel = await getHighestAdminLevel(targetUCP.ucp);
-
-    if (adminLevel < 3) {
-      return interaction.editReply({ content: '❌ Level admin Anda tidak mencukupi (membutuhkan level 3+).' });
-    }
-    if (adminLevel < 3 && (days > 10 || days < 0)) {
-        return interaction.editReply({ content: '❌ Anda hanya dapat membanned selama 1 sampai 10 hari (atau 0 untuk permanen).' });
-    }
-    if (targetLevel > adminLevel) {
-      return interaction.editReply({ content: '❌ Anda tidak dapat membanned admin yang levelnya lebih tinggi.' });
-    }
-
+    // --- Process Ban ---
     const banTime = days === 0 ? 0 : Math.floor(Date.now() / 1000) + (days * 86400);
 
     try {
