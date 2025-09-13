@@ -108,14 +108,6 @@ module.exports = {
         });
       }
 
-      const ageMs = Date.now() - interaction.user.createdAt.getTime();
-      if (ageMs / (1000 * 60 * 60 * 24) < 7) {
-        return interaction.reply({
-          content: '❌ Akun Discord harus minimal 7 hari.',
-          ephemeral: true
-        });
-      }
-
       await interaction.deferReply({ ephemeral: true });
 
       const ucpUsed = await PlayerUCP.findOne({ where: { ucp: nama } });

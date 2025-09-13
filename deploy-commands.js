@@ -62,7 +62,20 @@ const commands = [
     .addStringOption(option =>
       option.setName('cron_string')
         .setDescription('Format cron string (e.g., "0 */3 * * *")')
-        .setRequired(true))
+        .setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('ban')
+    .setDescription('Membanned seorang pemain.')
+    .addUserOption(option => option.setName('user').setDescription('User Discord yang akan di-ban.').setRequired(true))
+    .addIntegerOption(option => option.setName('hari').setDescription('Durasi ban dalam hari (0 untuk permanen).').setRequired(true))
+    .addStringOption(option => option.setName('alasan').setDescription('Alasan ban.').setRequired(true)),
+
+  new SlashCommandBuilder()
+    .setName('unbanucp')
+    .setDescription('Membuka ban seorang pemain berdasarkan nama UCP.')
+    .addStringOption(option => option.setName('ucp_name').setDescription('Nama UCP yang akan di-unban.').setRequired(true))
+    .addStringOption(option => option.setName('alasan').setDescription('Alasan unban.').setRequired(true))
 ].map(cmd => cmd.toJSON())
 
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);

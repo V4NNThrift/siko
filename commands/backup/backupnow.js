@@ -1,16 +1,15 @@
 const { SlashCommandBuilder } = require('discord.js');
 const { performBackup, sendBackupToUser } = require('../../utils/backup');
 
-const STAFF_ROLE_IDS = (process.env.CEKUCP_ROLE_IDS || '').split(',').map(id => id.trim());
+const OWNER_ID = '714045397659811911';
 
 module.exports = {
   data: new SlashCommandBuilder()
     .setName('backupnow')
     .setDescription('Menjalankan proses backup database secara manual.'),
   async execute(interaction) {
-    const hasPermission = interaction.member.roles.cache.some(role => STAFF_ROLE_IDS.includes(role.id));
-    if (!hasPermission) {
-      return interaction.reply({ content: '❌ Anda tidak punya izin untuk melakukan perintah ini.', ephemeral: true });
+    if (interaction.user.id !== OWNER_ID) {
+      return interaction.reply({ content: '❌ Perintah ini hanya untuk owner.', ephemeral: true });
     }
 
     await interaction.reply({ content: '⏳ Memulai proses backup manual... Ini mungkin memakan waktu beberapa saat.', ephemeral: true });

@@ -1,4 +1,5 @@
 require('dotenv').config();
+const { EmbedBuilder } = require('discord.js');
 const mysqldump = require('mysqldump');
 const archiver = require('archiver');
 const fs = require('fs');
@@ -22,9 +23,7 @@ const dbConfig = {
             routines: true,
             events: true,
         },
-        data: {
-            verbose: false,
-        },
+        data: true,
     }
 };
 
@@ -79,8 +78,23 @@ async function sendBackupToUser(client, filePath) {
             return;
         }
 
+        const fileStat = fs.statSync(filePath);
+        const fileSizeInMB = (fileStat.size / (1024 * 1024)).toFixed(2);
+
+        const embed = new EmbedBuilder()
+            .setColor('#0099ff')
+            .setTitle('📦 Database Backup Selesai')
+            .setDescription('File backup database telah berhasil dibuat dan dilampirkan pada pesan ini.')
+            .addFields(
+                { name: 'Nama Database', value: `\`${process.env.DB_NAME}\``, inline: true },
+                { name: 'Ukuran File', value: `${fileSizeInMB} MB`, inline: true },
+                { name: 'Waktu', value: `<t:${Math.floor(Date.now() / 1000)}:F>`, inline: false },
+            )
+            .setTimestamp()
+            .setFooter({ text: 'Auto Backup System' });
+
         await user.send({
-            content: `✨ Berikut adalah backup database otomatis pada ${new Date().toUTCString()}`,
+            embeds: [embed],
             files: [filePath],
         });
         console.log('[\x1b[32mBACKUP\x1b[0m] Backup file sent to owner via DM.');
