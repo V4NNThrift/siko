@@ -15,12 +15,21 @@ const PlayerUCP = sequelize.define('playerucp', {
   password: { type: DataTypes.STRING, allowNull: true },
   salt: { type: DataTypes.STRING, allowNull: true },
   verified: { type: DataTypes.BOOLEAN, defaultValue: false },
-  pAdmin: { type: DataTypes.INTEGER, defaultValue: 0, field: 'pAdmin' } // Added pAdmin
 }, {
   timestamps: true,
   createdAt: 'reg_date',
   updatedAt: false,
   tableName: 'playerucp'
+});
+
+const PlayerCharacter = sequelize.define('PlayerCharacter', {
+    pID: { type: DataTypes.INTEGER.UNSIGNED, autoIncrement: true, primaryKey: true },
+    Char_UCP: { type: DataTypes.STRING(22), defaultValue: null },
+    Char_Admin: { type: DataTypes.TINYINT.UNSIGNED, defaultValue: 0 },
+    Char_Name: { type: DataTypes.STRING(24), defaultValue: '' },
+}, {
+    timestamps: false,
+    tableName: 'player_characters'
 });
 
 const PlayerBan = sequelize.define('PlayerBan', {
@@ -47,13 +56,8 @@ const WarningLog = sequelize.define('WarningLog', {
 }, {
   timestamps: false,
   tableName: 'warninglogs',
-  // Sequelize adds an 'id' column by default, but the schema provided does not have one.
-  // We need to tell Sequelize not to expect a primary key if there isn't one.
-  // However, it's better practice for a table to have a primary key.
-  // For now, let's assume 'id' is fine, or we can disable it if sync fails.
-  // Let's proceed assuming default 'id' is acceptable.
+  // No primary key in user's schema, so we let Sequelize add 'id' by default
 });
-
 
 const ServerConfig = sequelize.define('ServerConfig', {
   key: { type: DataTypes.STRING, primaryKey: true },
@@ -67,11 +71,11 @@ const ServerConfig = sequelize.define('ServerConfig', {
   try {
     await sequelize.authenticate();
     console.log('[\x1b[34mDB\x1b[0m] ✅ Database berhasil terkoneksi.');
-    await sequelize.sync({ alter: true }); // Use alter to add new columns and tables
+    await sequelize.sync({ alter: true });
     console.log('[\x1b[34mDB\x1b[0m] ✅ Database models synced.');
   } catch (error) {
     console.error('[\x1b[31mDB ERROR\x1b[0m] ❌ Gagal koneksi atau sync database:', error.message);
   }
 })();
 
-module.exports = { sequelize, PlayerUCP, PlayerBan, WarningLog, ServerConfig };
+module.exports = { sequelize, PlayerUCP, PlayerCharacter, PlayerBan, WarningLog, ServerConfig };

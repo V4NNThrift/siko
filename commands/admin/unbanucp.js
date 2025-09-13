@@ -1,7 +1,16 @@
 const { SlashCommandBuilder, EmbedBuilder } = require('discord.js');
-const { PlayerUCP, PlayerBan } = require('../../db');
+const { PlayerUCP, PlayerBan, PlayerCharacter } = require('../../db');
 
 const ADMIN_ROLE_ID = '1365274991846756419';
+const ALLOWED_CHANNEL_ID = '1365274992786542600';
+const LOG_CHANNEL_ID = '1414122219403083836';
+
+// Helper function to get the highest admin level for a user
+async function getHighestAdminLevel(ucp) {
+    const characters = await PlayerCharacter.findAll({ where: { Char_UCP: ucp } });
+    if (!characters.length) return 0;
+    return Math.max(...characters.map(c => c.Char_Admin));
+}
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -14,23 +23,27 @@ module.exports = {
     if (!interaction.member.roles.cache.has(ADMIN_ROLE_ID)) {
       return interaction.reply({ content: '❌ Anda tidak memiliki izin untuk menggunakan perintah ini.', ephemeral: true });
     }
+    if (interaction.channelId !== ALLOWED_CHANNEL_ID) {
+        return interaction.reply({ content: `❌ Perintah ini hanya bisa digunakan di channel <#${ALLOWED_CHANNEL_ID}>.`, ephemeral: true });
+    }
 
     await interaction.deferReply({ ephemeral: true });
 
     const ucpName = interaction.options.getString('ucp_name');
     const reason = interaction.options.getString('alasan');
-    const adminUser = interaction.user;
+    const adminDiscordUser = interaction.user;
 
-    const adminAccount = await PlayerUCP.findOne({ where: { DiscordID: adminUser.id } });
-    if (!adminAccount) {
+    const adminUCP = await PlayerUCP.findOne({ where: { DiscordID: adminDiscordUser.id } });
+    if (!adminUCP) {
       return interaction.editReply({ content: '❌ Akun admin Anda tidak ditemukan di database.' });
     }
-     if (adminAccount.pAdmin < 3) {
+
+    const adminLevel = await getHighestAdminLevel(adminUCP.ucp);
+    if (adminLevel < 3) {
       return interaction.editReply({ content: '❌ Level admin Anda tidak mencukupi (membutuhkan level 3+).' });
     }
 
     const bannedUcp = await PlayerBan.findOne({ where: { name: ucpName } });
-
     if (!bannedUcp) {
       return interaction.editReply({ content: `❌ Akun UCP \`${ucpName}\` tidak ditemukan dalam daftar ban.` });
     }
@@ -41,14 +54,21 @@ module.exports = {
       const embed = new EmbedBuilder()
         .setColor('#2ECC71')
         .setTitle('✅ Laporan Unbanned')
-        .setDescription(`**${ucpName}** telah di-unban oleh **${adminAccount.ucp}**.`)
+        .setAuthor({ name: adminUCP.ucp, iconURL: adminDiscordUser.displayAvatarURL() })
+        .setDescription(`UCP **${ucpName}** telah di-unban.`)
         .addFields(
+          { name: 'Admin', value: `<@${adminDiscordUser.id}> (\`${adminUCP.ucp}\`)`, inline: false },
           { name: 'Alasan', value: reason, inline: false }
         )
         .setTimestamp()
         .setFooter({ text: 'Ban & Unban Log' });
 
-      await interaction.editReply({ content: `✅ Berhasil melakukan unban pada UCP \`${ucpName}\`.`, embeds: [embed] });
+      const logChannel = await interaction.client.channels.fetch(LOG_CHANNEL_ID).catch(() => null);
+      if (logChannel) {
+        await logChannel.send({ embeds: [embed] });
+      }
+
+      await interaction.editReply({ content: `✅ Berhasil melakukan unban pada UCP \`${ucpName}\`.` });
 
     } catch (error) {
       console.error('Failed to process unban:', error);
