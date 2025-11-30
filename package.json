@@ -10,6 +10,7 @@
   "dependencies": {
     "@hapi/boom": "^10.0.1",
     "@whiskeysockets/baileys": "^6.5.0",
+    "archiver": "^7.0.1",
     "axios": "^1.10.0",
     "bcrypt": "^6.0.0",
     "canvas": "^3.1.2",
@@ -22,6 +23,8 @@
     "fs-extra": "^11.2.0",
     "glob": "^10.3.10",
     "mysql2": "^3.14.1",
+    "mysqldump": "^3.2.0",
+    "node-cron": "^4.2.1",
     "node-fetch": "^3.3.2",
     "nodemon": "^3.1.10",
     "path": "^0.12.7",

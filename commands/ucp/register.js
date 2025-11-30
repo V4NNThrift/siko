@@ -88,6 +88,12 @@ module.exports = {
   },
 
   async handleInteraction(interaction) {
+    // This handler should only process interactions from the UCP registration system.
+    const ucpSystemIds = /^(open_modal|form_nama|button-reffrole|button-checkucp|reset-password|reset-ucp-password)/;
+    if (!ucpSystemIds.test(interaction.customId)) {
+      return;
+    }
+
     // ==== MODAL SUBMIT ====
     if (
       interaction.type === InteractionType.ModalSubmit &&
@@ -98,14 +104,6 @@ module.exports = {
       if (!/^[a-zA-Z0-9]{5,}$/.test(nama)) {
         return interaction.reply({
           content: '❌ Username harus alfanumerik dan minimal 5 karakter.',
-          ephemeral: true
-        });
-      }
-
-      const ageMs = Date.now() - interaction.user.createdAt.getTime();
-      if (ageMs / (1000 * 60 * 60 * 24) < 7) {
-        return interaction.reply({
-          content: '❌ Akun Discord harus minimal 7 hari.',
           ephemeral: true
         });
       }

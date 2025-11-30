@@ -19,7 +19,6 @@ const client = new Client({
 
 client.commands = new Collection();
 client.handlers = [];
-const prefix = '!';
 
 // === Load slash commands & handlers ===
 const commandsPath = path.join(__dirname, 'commands');
@@ -85,30 +84,17 @@ client.on('messageCreate', async message => {
 
   // ✅ Handler untuk "on ic" tanpa prefix
   handleOnIC(message);
-
-  // ✅ Prefix command handler
-  if (!message.content.startsWith(prefix)) return;
-
-  const args = message.content.slice(prefix.length).trim().split(/ +/);
-  const commandName = args.shift().toLowerCase();
-
-  const commandPath = path.join(__dirname, 'commands', 'prefix', `${commandName}.js`);
-  if (!fs.existsSync(commandPath)) return;
-
-  try {
-    const command = require(commandPath);
-    await command.execute(message, args);
-  } catch (error) {
-    console.error(`[❌] Error executing !${commandName}:`, error);
-    message.reply('❌ Terjadi kesalahan saat menjalankan command.');
-  }
 });
+
+const scheduler = require('./scheduler');
 
 // === Bot Ready ===
 client.once('ready', async () => {
   console.log(`[\x1b[36mONLINE\x1b[0m] Bot ready as ${client.user.tag}`);
   require('./deploy-commands'); // Register slash commands
   global.discordClient = client;
+
+  scheduler.start(client);
 
   try {
     await startWA(); // WhatsApp starter
